@@ -1,4 +1,4 @@
-# Lista de Mercado - Família Mascarelo
+# Lista de Mercado - Mascarelo
 
 App web para os irmãos manterem listas de compras compartilhadas. Funciona no celular e no computador, em tempo real.
 
@@ -36,7 +36,7 @@ Hospedagem: **GitHub Pages** (grátis). Login e dados: **Firebase**, no plano gr
 ## Passo 4: pegar a configuração do app
 
 1. Clique na engrenagem ao lado de **Visão geral do projeto → Configurações do projeto**.
-2. Em **Seus apps**, clique no ícone **`</>`** (Web). Dê um apelido (ex.: `site`), **não** marque Firebase Hosting e clique em **Registrar app**.
+2. Em **Seus apps**, clique no ícone **`</>`** (Web). Dê um apelido (ex.: `Lista Mercado Web`), **não** marque Firebase Hosting e clique em **Registrar app**.
 3. Vai aparecer um bloco `const firebaseConfig = { ... }`. Copie os valores para o arquivo **`firebase-config.js`**, trocando cada `COLE_AQUI`.
 
 > É normal essa configuração ficar pública no GitHub: quem protege os dados são as regras do Passo 3.
@@ -67,7 +67,7 @@ Hospedagem: **GitHub Pages** (grátis). Login e dados: **Firebase**, no plano gr
 2. Preencha o **nome** (ex.: `Rafael`, aparece nos itens), o **usuário** (ex.: `rafael`, usado para entrar, sem espaços) e uma senha provisória.
 3. Toque em **Copiar mensagem** e mande pelo WhatsApp. No primeiro acesso, cada um cria a própria senha.
 
-Dica: no celular, abra o site e use **Adicionar à tela de início** para ele virar um ícone, como um app.
+Dica: no celular, abra o site e use **Instalar app** (ou **Adicionar à tela de início**) no menu do navegador para ele virar um ícone, como um app. Ao abrir, o ícone aparece por 1,5 segundo antes da tela inicial.
 
 ---
 
@@ -92,4 +92,4 @@ Edite ou envie os arquivos novos pelo GitHub (**Add file → Upload files**). O 
 | `styles.css` | Visual |
 | `firebase-config.js` | Configuração do seu Firebase (você preenche) |
 | `firestore.rules` | Regras de segurança (colar no Firebase) |
-| `manifest.json`, `icons/` | Ícone para a tela de início do celular |
+| `manifest.json`, `icons/` | Ícone do app (instalação pelo navegador) e imagem da tela de abertura |
