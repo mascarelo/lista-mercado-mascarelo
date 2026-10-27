@@ -17,6 +17,8 @@ on:
       - 'icons/**'
       - 'package.json'
       - 'capacitor.config.json'
+      - 'google-services.json'
+      - 'android-res/**'
       - '.github/workflows/build-apk.yml'
 
 permissions:
@@ -51,6 +53,30 @@ jobs:
           npm install
           npx cap add android
           npx cap sync android
+      - name: Notificações no app (Firebase Cloud Messaging)
+        run: |
+          if [ ! -s google-services.json ]; then
+            echo "ERRO: falta o arquivo google-services.json na raiz do repositório. Sem ele o APK não recebe notificações."
+            echo "Baixe em: Firebase → Configurações do projeto → Seus apps → app Android (com.mascarelo.listamercado) → google-services.json"
+            exit 1
+          fi
+          grep -q '"package_name": "com.mascarelo.listamercado"' google-services.json || { echo "ERRO: o google-services.json não é do app com.mascarelo.listamercado"; exit 1; }
+          cp google-services.json android/app/
+          # ícone branco da barra de notificações e cor do app
+          # copia só as imagens (.png) e .xml (ignora arquivos provisórios usados para criar as pastas pelo celular)
+          (cd android-res && find . -type f \( -name '*.png' -o -name '*.xml' \) -exec install -D -m 644 {} ../android/app/src/main/res/{} \;)
+          ls -R android/app/src/main/res | grep -c ic_stat_lista || { echo "ERRO: não encontrei o ícone das notificações (android-res/drawable-*/ic_stat_lista.png)"; exit 1; }
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf-8').read()
+          meta = ('        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_lista" />\n'
+                  '        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notif_cor" />\n')
+          if 'default_notification_icon' not in s:
+              s = s.replace('</application>', meta + '    </application>', 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          print('manifesto ok' if 'default_notification_icon' in s else 'ERRO no manifesto')
+          PY
+          grep -q default_notification_icon android/app/src/main/AndroidManifest.xml
       - name: Numerar a versão do app (o Android só atualiza por cima se o número aumentar)
         run: |
           f=android/app/build.gradle
@@ -162,4 +188,3 @@ jobs:
             Para instalar ou atualizar: baixe o arquivo **lista-de-mercado-by-mascarelo.apk** abaixo, abra e toque em **Instalar** (ou **Atualizar**).
             Não precisa desinstalar a versão anterior.
           files: lista-de-mercado-by-mascarelo.apk
-          
