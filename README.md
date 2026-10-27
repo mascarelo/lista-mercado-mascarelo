@@ -6,6 +6,7 @@ App web para os irmãos manterem listas de compras compartilhadas. Funciona no c
 - Login com usuário e senha; troca obrigatória da senha no primeiro acesso.
 - Só o administrador (Thiago) cria, edita, redefine senha e remove usuários.
 - Várias listas abertas ao mesmo tempo; um toque marca o item como comprado.
+- Ao criar uma lista, quem cria escolhe **quem pode ver**: **Todos**, **Só eu** ou **Escolher pessoas** (caixinhas). Quem criou pode mudar depois pelo botão **Alterar** dentro da lista. Ninguém vê lista de outra pessoa sem ter sido incluído, nem o administrador. Os avisos vão só para quem pode ver a lista.
 - Item colocado por engano: toque nos **três pontinhos** ao lado dele para editar (nome e quantidade) ou apagar.
 - Ao concluir uma lista, os itens pendentes ficam como **não comprados** e a lista vai para o histórico.
 - Do histórico dá para criar uma nova lista com os mesmos itens.
