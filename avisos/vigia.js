@@ -5,7 +5,7 @@
 // Quando fica ligado: todos os dias, das 7h às 23h (horário de Brasília). Fora disso encerra na hora.
 // Uso: node avisos/vigia.js   (VIGIA_SEMPRE=1 ignora o horário, SIMULAR=1 não envia)
 const fs = require('fs');
-const { rodar } = require('./enviar.js');
+const { rodar, lerChave } = require('./enviar.js');
 
 const MIN = 6e4, BRT = -3 * 60 * MIN;          // Brasília = UTC-3 (sem horário de verão)
 const INICIO = 7, FIM = 23;                     // janela diária, em horas de Brasília
@@ -59,7 +59,7 @@ async function main() {
   const { initializeApp, cert } = require('firebase-admin/app');
   const { getFirestore } = require('firebase-admin/firestore');
   const { getMessaging } = require('firebase-admin/messaging');
-  initializeApp({ credential: cert(JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8'))) });
+  initializeApp({ credential: cert(lerChave(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8'))) });
   await vigiar({ db: getFirestore(), messaging: getMessaging(), simular: !!process.env.SIMULAR, sempre: !!process.env.VIGIA_SEMPRE });
 }
 module.exports = { vigiar, fimDaJanela };

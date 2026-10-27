@@ -1,4 +1,4 @@
-// Envia as notificações da Lista de Mercado - Mascarelo (Firebase Cloud Messaging).
+// Envia as notificações da Lista de Mercado by Mascarelo (Firebase Cloud Messaging).
 // Mesmo esquema do Bolão F1: roda no GitHub Actions com a conta de serviço do Firebase.
 //
 // Uso: node avisos/enviar.js                      -> rotina normal (procura listas recém-concluídas e avisa)
@@ -37,6 +37,27 @@ async function aparelhosAtivos(db) {
     .map((d) => ({ ...d, username: (ativos.get(d.uid) || {}).username }));
 }
 
+// Lê a chave da conta de serviço. Aceita a chave colada com quebras de linha de verdade dentro de "private_key"
+// (acontece ao copiar o .json por alguns editores), que o JSON normal recusaria com "Bad control character".
+function lerChave(texto) {
+  const t = String(texto || '').replace(/^﻿/, '').trim();
+  if (!t) throw new Error('O segredo FIREBASE_SERVICE_ACCOUNT está vazio ou não existe no GitHub (Settings → Secrets and variables → Actions).');
+  try { return JSON.parse(t); } catch (e1) {
+    // troca quebras de linha (e outros caracteres de controle) que estejam DENTRO de textos entre aspas por \n
+    let fora = true, out = '';
+    for (let i = 0; i < t.length; i++) {
+      const c = t[i];
+      if (c === '"' && t[i - 1] !== '\\') fora = !fora;
+      if (!fora && (c === '\n' || c === '\r')) { if (c === '\n') out += '\\n'; continue; }
+      if (!fora && c < ' ') continue;
+      out += c;
+    }
+    try { return JSON.parse(out); } catch (e2) {
+      throw new Error('O segredo FIREBASE_SERVICE_ACCOUNT não é um JSON válido (' + e1.message + '). Cole de novo o conteúdo inteiro do arquivo .json, do { até o }.');
+    }
+  }
+}
+
 // Manda para uma lista de aparelhos e apaga os registros de aparelhos que não existem mais
 function criarEnviar({ db, messaging, simular, log, saida }) {
   return async function enviar(tokens, msg, link, descricao) {
@@ -50,7 +71,8 @@ function criarEnviar({ db, messaging, simular, log, saida }) {
         tokens: lote,
         notification: { title: msg.title, body: msg.body },
         data: { url: link, tag: descricao },
-        webpush: { fcmOptions: { link }, notification: { icon: ICONE } }
+        webpush: { fcmOptions: { link }, notification: { icon: ICONE } },     // site e app instalado pelo navegador
+        android: { priority: 'high' }                                         // app Android (APK)
       });
       log('  ' + r.successCount + ' ok, ' + r.failureCount + ' com erro');
       await Promise.all(r.responses.map(async (x, j) => {
@@ -114,12 +136,12 @@ async function main() {
   const { initializeApp, cert } = require('firebase-admin/app');
   const { getFirestore } = require('firebase-admin/firestore');
   const { getMessaging } = require('firebase-admin/messaging');
-  initializeApp({ credential: cert(JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8'))) });
+  initializeApp({ credential: cert(lerChave(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8'))) });
   const db = getFirestore(), messaging = getMessaging();
   const simular = !!process.env.SIMULAR;
   if (process.argv[2] === 'teste') return teste({ db, messaging, simular, alvo: process.argv[3], mensagem: process.env.MENSAGEM });
   await rodar({ db, messaging, simular });
 }
 
-module.exports = { rodar, teste, textoConcluida, reservar, aparelhosAtivos, criarEnviar };
+module.exports = { rodar, teste, textoConcluida, reservar, aparelhosAtivos, criarEnviar, lerChave };
 if (require.main === module) main().then(() => process.exit(0)).catch((e) => { console.error('ERRO', e.message); process.exit(1); });
