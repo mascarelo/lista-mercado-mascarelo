@@ -71,15 +71,19 @@ Dica: no celular, abra o site e use **Instalar app** (ou **Adicionar à tela de 
 
 ---
 
-## Notificações de lista concluída
+## Notificações
 
-Quando alguém conclui uma lista, todos que ativaram as notificações recebem um aviso no celular ou computador, inclusive quem concluiu. Tocar no aviso abre os itens da lista no histórico. Mesmo esquema do Bolão F1:
+Dois avisos, que cada pessoa liga ou desliga em **Configurações**, em cada aparelho:
+- **Nova lista criada:** avisa todos (inclusive quem criou) para entrarem e incluírem o que precisam. Tocar no aviso abre a lista.
+- **Lista concluída:** avisa todos (inclusive quem concluiu). Tocar no aviso abre os itens da lista no histórico.
+
+Mesmo esquema do Bolão F1:
 
 - **Vigia** (`.github/workflows/vigia.yml`): fica ligado todos os dias das **7h às 23h** (Brasília) e avisa em cerca de 1 minuto.
 - **Robô de reserva** (`.github/workflows/avisos.yml`): confere a cada 10 minutos, 24h por dia. Fora do horário do vigia, o aviso pode levar de 10 a 45 minutos (o agendador do GitHub atrasa).
 - Os dois nunca mandam o mesmo aviso duas vezes. Tudo é gratuito, porque o repositório é público.
 
-Cada pessoa ativa em **Configurações** (engrenagem na tela inicial) → **Lista concluída**, em cada aparelho. No iPhone, só funciona com o app instalado na tela de início (iOS 16.4 ou mais novo).
+Cada pessoa ativa em **Configurações** (engrenagem na tela inicial), em cada aparelho. No iPhone, só funciona com o app instalado na tela de início (iOS 16.4 ou mais novo).
 
 ### Passo 9: chave das notificações web (VAPID)
 1. Abra <https://console.firebase.google.com/project/lista-mercado-mascarelo/settings/cloudmessaging>.
@@ -120,8 +124,9 @@ Se o robô mostrar erro de permissão do Cloud Messaging, ative a API em <https:
 Opcional, para quem prefere instalar o app no Android. Mesmo esquema do Bolão F1:
 - O GitHub gera o APK sozinho e publica na aba **Releases** do repositório.
 - Cada APK novo tem número de versão maior e é assinado com a **mesma chave**. Por isso o Android instala **por cima**, sem desinstalar.
-- O app avisa na tela inicial quando existe versão nova, com o botão **Baixar atualização**. Em **Configurações → App Android** dá para ver a versão instalada e procurar atualização.
-- O APK também recebe as notificações de lista concluída (notificação nativa do Android). Cada pessoa ativa em **Configurações → Lista concluída** dentro do app.
+- O app avisa na tela inicial quando existe versão nova, com o botão **Atualizar agora**: o próprio app baixa a versão de **maior número** (pula as intermediárias) e abre o instalador do Android, sem passar pelo navegador. Na primeira vez, o Android pede para permitir que o app instale atualizações ("Permitir desta fonte").
+- Em **Configurações → App Android** dá para ver a versão instalada e procurar atualização.
+- O APK também recebe as notificações (notificação nativa do Android). Cada pessoa ativa em **Configurações** dentro do app.
 
 Link para baixar (mande para os irmãos): <https://github.com/mascarelo/lista-mercado-mascarelo/releases/latest>
 
