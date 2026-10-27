@@ -71,6 +71,50 @@ Dica: no celular, abra o site e use **Instalar app** (ou **Adicionar à tela de 
 
 ---
 
+## Notificações de lista concluída
+
+Quando alguém conclui uma lista, todos que ativaram as notificações recebem um aviso no celular ou computador, inclusive quem concluiu. Tocar no aviso abre os itens da lista no histórico. Mesmo esquema do Bolão F1:
+
+- **Vigia** (`.github/workflows/vigia.yml`): fica ligado todos os dias das **7h às 23h** (Brasília) e avisa em cerca de 1 minuto.
+- **Robô de reserva** (`.github/workflows/avisos.yml`): confere a cada 10 minutos, 24h por dia. Fora do horário do vigia, o aviso pode levar de 10 a 45 minutos (o agendador do GitHub atrasa).
+- Os dois nunca mandam o mesmo aviso duas vezes. Tudo é gratuito, porque o repositório é público.
+
+Cada pessoa ativa em **Configurações** (engrenagem na tela inicial) → **Lista concluída**, em cada aparelho. No iPhone, só funciona com o app instalado na tela de início (iOS 16.4 ou mais novo).
+
+### Passo 9: chave das notificações web (VAPID)
+1. Abra <https://console.firebase.google.com/project/lista-mercado-mascarelo/settings/cloudmessaging>.
+2. Role até **Configuração da Web** → **Certificados push da Web** → **Gerar par de chaves**.
+3. Copie a chave (um texto longo começando com `B`) e cole no `firebase-config.js`, em `VAPID_KEY`, no lugar de `COLE_AQUI`.
+
+### Passo 10: chave da conta de serviço (para o robô enviar)
+1. Abra <https://console.firebase.google.com/project/lista-mercado-mascarelo/settings/serviceaccounts/adminsdk>.
+2. Clique em **Gerar nova chave privada** → **Gerar chave**. Um arquivo `.json` é baixado.
+3. **Não** coloque esse arquivo no repositório: ele é uma senha.
+
+### Passo 11: guardar a chave como segredo no GitHub
+1. No repositório `lista-mercado-mascarelo`: **Settings → Secrets and variables → Actions → New repository secret**.
+2. **Name:** `FIREBASE_SERVICE_ACCOUNT`
+3. **Secret:** abra o `.json` baixado num editor de texto (Bloco de Notas, TextEdit), copie **tudo** e cole aqui. Clique em **Add secret**.
+4. Pode apagar o `.json` do computador depois.
+
+### Passo 12: subir os arquivos novos
+1. **Add file → Upload files**: envie `index.html`, `app.js`, `styles.css`, `firebase-config.js`, `firestore.rules`, `README.md`, `firebase-messaging-sw.js` e a pasta `avisos`.
+2. Os robôs ficam na pasta `.github/workflows`, que o computador costuma esconder (começa com ponto). O jeito mais garantido é criar cada um pelo GitHub: **Add file → Create new file**, digite o nome `.github/workflows/avisos.yml`, cole o conteúdo do arquivo de mesmo nome do zip e clique em **Commit changes**. Repita com `.github/workflows/vigia.yml`.
+   - No Mac, para ver a pasta escondida: no Finder, aperte **Cmd + Shift + .** (ponto).
+
+### Passo 13: publicar as regras novas
+Cole de novo o conteúdo de `firestore.rules` em **Firestore Database → Regras → Publicar**. As regras novas permitem que cada aparelho registre as próprias notificações.
+
+### Passo 14: ligar e testar
+1. No GitHub, abra a aba **Actions**. Se aparecer um aviso para habilitar os workflows, clique para habilitar.
+2. No celular: abra o app → engrenagem → ligue **Lista concluída** → **Permitir**. Toque em **Enviar notificação de teste** para ver se o aparelho mostra notificações.
+3. Teste o envio de verdade pelo robô: **Actions → Enviar avisos da Lista de Mercado → Run workflow**, no campo de teste digite `todos` (ou o seu usuário, `thiago`) e clique em **Run workflow**. Em até 1 minuto a notificação chega.
+4. Para ligar o vigia na hora, sem esperar o próximo horário: **Actions → Vigia dos avisos → Run workflow**. Rodando manualmente, ele fica ligado por 5h30 mesmo fora do horário.
+
+Se o robô mostrar erro de permissão do Cloud Messaging, ative a API em <https://console.cloud.google.com/apis/library/fcm.googleapis.com?project=lista-mercado-mascarelo> (**Ativar**).
+
+---
+
 ## Gerenciar usuários (só o administrador)
 
 - **Editar:** muda o nome que aparece nos itens ou o nome de usuário.
@@ -88,8 +132,13 @@ Edite ou envie os arquivos novos pelo GitHub (**Add file → Upload files**). O 
 | Arquivo | O que é |
 |---|---|
 | `index.html` | Página do app |
-| `app.js` | Toda a lógica (telas, login, listas, usuários) |
+| `app.js` | Toda a lógica (telas, login, listas, usuários, configurações) |
 | `styles.css` | Visual |
 | `firebase-config.js` | Configuração do seu Firebase (você preenche) |
 | `firestore.rules` | Regras de segurança (colar no Firebase) |
 | `manifest.json`, `icons/` | Ícone do app (instalação pelo navegador) e imagem da tela de abertura |
+| `firebase-messaging-sw.js` | Recebe as notificações com o app fechado |
+| `avisos/enviar.js` | Robô que envia os avisos de lista concluída (e os testes) |
+| `avisos/vigia.js` | Vigia que observa o banco e avisa em ~1 minuto |
+| `.github/workflows/avisos.yml` | Agenda do robô (a cada 10 min) e botão de teste |
+| `.github/workflows/vigia.yml` | Agenda do vigia (7h às 23h) |
