@@ -1,0 +1,165 @@
+name: Gerar APK
+
+# Gera o app Android (APK) e publica na aba Releases. Mesmo esquema do Bolão F1:
+# - cada APK tem número de versão maior que o anterior (versionCode = número da execução);
+# - todos são assinados com a MESMA chave (segredo CHAVE_ASSINATURA).
+# Com isso o Android instala a versão nova POR CIMA da antiga, sem desinstalar.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - 'styles.css'
+      - 'firebase-config.js'
+      - 'manifest.json'
+      - 'icons/**'
+      - 'package.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Preparar projeto Android
+        run: |
+          mkdir -p www
+          cp -r index.html app.js styles.css firebase-config.js manifest.json icons www/
+          # número da versão, lido pelo app para avisar quando houver APK mais novo
+          echo '{"build": ${{ github.run_number }}}' > www/versao.json
+          npm install
+          npx cap add android
+          npx cap sync android
+      - name: Numerar a versão do app (o Android só atualiza por cima se o número aumentar)
+        run: |
+          f=android/app/build.gradle
+          sed -i -E "s/versionCode[ =]+[0-9]+/versionCode ${{ github.run_number }}/; s/versionName[ =]+\"[^\"]*\"/versionName \"1.${{ github.run_number }}\"/" "$f"
+          grep -E "versionCode|versionName" "$f"
+          grep -q "versionCode ${{ github.run_number }}" "$f" || { echo "ERRO: não consegui numerar a versão do app"; exit 1; }
+      - name: Aplicar ícone do app
+        run: |
+          pip install pillow
+          python3 - <<'PY'
+          from PIL import Image
+          import glob, os
+          res = 'android/app/src/main/res'
+          for f in glob.glob(res + '/mipmap-anydpi-v26/*'):
+              os.remove(f)
+          im = Image.open('icons/mercado-512.png').convert('RGBA')
+          for d, s in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}.items():
+              p = f'{res}/mipmap-{d}'
+              os.makedirs(p, exist_ok=True)
+              r = im.resize((s, s), Image.LANCZOS)
+              for n in ('ic_launcher', 'ic_launcher_round', 'ic_launcher_foreground'):
+                  r.save(f'{p}/{n}.png')
+          PY
+      - name: Ajustar bordas da tela (barras do Android em azul escuro)
+        run: |
+          mkdir -p android/app/src/main/java/com/mascarelo/listamercado
+          cat > android/app/src/main/java/com/mascarelo/listamercado/MainActivity.java <<'JAVA'
+          package com.mascarelo.listamercado;
+
+          import android.os.Bundle;
+          import android.graphics.drawable.ColorDrawable;
+          import android.graphics.drawable.Drawable;
+          import android.graphics.drawable.LayerDrawable;
+          import android.view.Gravity;
+          import android.view.View;
+          import androidx.core.graphics.Insets;
+          import androidx.core.view.ViewCompat;
+          import androidx.core.view.WindowCompat;
+          import androidx.core.view.WindowInsetsCompat;
+          import androidx.core.view.WindowInsetsControllerCompat;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  View root = findViewById(android.R.id.content);
+                  root.setBackgroundColor(0xFF06305A);
+                  ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+                      Insets s = insets.getInsets(
+                          WindowInsetsCompat.Type.systemBars()
+                          | WindowInsetsCompat.Type.displayCutout()
+                          | WindowInsetsCompat.Type.ime());
+                      v.setPadding(s.left, s.top, s.right, s.bottom);
+                      LayerDrawable ld = new LayerDrawable(new Drawable[] {
+                          new ColorDrawable(0xFF06305A), new ColorDrawable(0xFF06305A) });
+                      ld.setLayerGravity(1, Gravity.TOP | Gravity.FILL_HORIZONTAL);
+                      ld.setLayerHeight(1, s.top);
+                      v.setBackground(ld);
+                      return WindowInsetsCompat.CONSUMED;
+                  });
+                  WindowInsetsControllerCompat c = WindowCompat.getInsetsController(getWindow(), root);
+                  if (c != null) {
+                      c.setAppearanceLightStatusBars(false);
+                      c.setAppearanceLightNavigationBars(false);
+                  }
+              }
+          }
+          JAVA
+      - name: Usar a chave de assinatura fixa
+        env:
+          CHAVE: ${{ secrets.CHAVE_ASSINATURA }}
+        run: |
+          mkdir -p ~/.android
+          if [ -z "$CHAVE" ]; then
+            echo "ERRO: o segredo CHAVE_ASSINATURA está vazio ou não existe. Sem ele cada APK sai com uma chave diferente e o Android não atualiza por cima."
+            exit 1
+          fi
+          echo "$CHAVE" | base64 -d > ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | tail -2
+      - name: Mandar o Gradle assinar com essa chave
+        run: |
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  debug {
+                      storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
+                      storePassword "android"
+                      keyAlias "androiddebugkey"
+                      keyPassword "android"
+                  }
+              }
+          }
+          GRADLE
+      - name: Compilar APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../lista-de-mercado-by-mascarelo.apk
+      - name: Publicar APK na aba Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Lista de Mercado by Mascarelo (versão ${{ github.run_number }})
+          make_latest: true
+          body: |
+            Para instalar ou atualizar: baixe o arquivo **lista-de-mercado-by-mascarelo.apk** abaixo, abra e toque em **Instalar** (ou **Atualizar**).
+            Não precisa desinstalar a versão anterior.
+          files: lista-de-mercado-by-mascarelo.apk
+          
