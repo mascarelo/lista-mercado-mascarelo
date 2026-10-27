@@ -30,6 +30,9 @@ function textoConcluida(l) {
   };
 }
 
+// Quem pode ver a lista: pública (ou antiga, sem o campo) = todos; senão só quem está em "acesso"
+const podeVer = (l, uid) => l.publica !== false || !!(l.acesso && l.acesso[uid] === true);
+
 function textoCriada(l) {
   return {
     title: '📝 Nova lista: ' + (l.name || 'sem nome'),
@@ -123,25 +126,36 @@ async function rodar({ db, messaging, agora = Date.now(), simular = false, log =
   const saida = [];
   const enviar = criarEnviar({ db, messaging, simular, log, saida });
   const listas = (await db.collection('lists').get()).docs;
+  // Listas de antes da opção "quem pode ver" passam a valer para todos (feito uma vez só, pelo robô)
+  for (const d of listas) {
+    if (d.data().publica === undefined) {
+      if (!simular) await d.ref.update({ publica: true, acesso: {}, visibilidade: 'todos' });
+      log('Lista marcada como visível para todos: ' + d.data().name);
+    }
+  }
   const pendCriada = listas.filter((d) => !d.data().avisoCriadaEm);
   const pendConcluida = listas.filter((d) => d.data().status === 'closed' && !d.data().avisoConcluidaEm);
   if (!pendCriada.length && !pendConcluida.length) { log('Nenhuma lista nova criada ou concluída.'); return saida; }
   const devs = {};
-  const tokens = async (tipo) => (devs[tipo] = devs[tipo] || (await aparelhosAtivos(db, tipo))).map((x) => x.token);
+  // aparelhos com o aviso ligado E cujo dono pode ver a lista
+  const tokens = async (tipo, l) => {
+    devs[tipo] = devs[tipo] || (await aparelhosAtivos(db, tipo));
+    return devs[tipo].filter((x) => podeVer(l, x.uid)).map((x) => x.token);
+  };
   // primeiro os avisos de lista criada, depois os de concluída (se as duas coisas aconteceram, chegam nessa ordem)
   for (const d of pendCriada) {
     const r = await reservar(db, d.ref, agora, 'criada');
     if (!r) continue;
     const l = d.data();
     if (r === 'antiga') { log('Lista sem aviso de criação (antiga ou já concluída): ' + l.name); continue; }
-    await enviar(await tokens('nova'), textoCriada(l), SITE + '#/lista/' + d.id, 'criada_' + d.id);
+    await enviar(await tokens('nova', l), textoCriada(l), SITE + '#/lista/' + d.id, 'criada_' + d.id);
   }
   for (const d of pendConcluida) {
     const r = await reservar(db, d.ref, agora, 'concluida');
     if (!r) continue;
     const l = d.data();
     if (r === 'antiga') { log('Lista antiga, só marcada (sem aviso): ' + l.name); continue; }
-    await enviar(await tokens('concluida'), textoConcluida(l), SITE + '#/historico/' + d.id, 'concluida_' + d.id);
+    await enviar(await tokens('concluida', l), textoConcluida(l), SITE + '#/historico/' + d.id, 'concluida_' + d.id);
   }
   return saida;
 }
@@ -171,5 +185,5 @@ async function main() {
   await rodar({ db, messaging, simular });
 }
 
-module.exports = { rodar, teste, textoConcluida, textoCriada, reservar, aparelhosAtivos, criarEnviar, lerChave };
+module.exports = { rodar, teste, podeVer, textoConcluida, textoCriada, reservar, aparelhosAtivos, criarEnviar, lerChave };
 if (require.main === module) main().then(() => process.exit(0)).catch((e) => { console.error('ERRO', e.message); process.exit(1); });
