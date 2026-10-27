@@ -1,4 +1,4 @@
-# Lista de Mercado - Mascarelo
+# Lista de Mercado by Mascarelo
 
 App web para os irmãos manterem listas de compras compartilhadas. Funciona no celular e no computador, em tempo real.
 
@@ -115,6 +115,41 @@ Se o robô mostrar erro de permissão do Cloud Messaging, ative a API em <https:
 
 ---
 
+## App Android (APK)
+
+Opcional, para quem prefere instalar o app no Android. Mesmo esquema do Bolão F1:
+- O GitHub gera o APK sozinho e publica na aba **Releases** do repositório.
+- Cada APK novo tem número de versão maior e é assinado com a **mesma chave**. Por isso o Android instala **por cima**, sem desinstalar.
+- O app avisa na tela inicial quando existe versão nova, com o botão **Baixar atualização**. Em **Configurações → App Android** dá para ver a versão instalada e procurar atualização.
+- O APK também recebe as notificações de lista concluída (notificação nativa do Android). Cada pessoa ativa em **Configurações → Lista concluída** dentro do app.
+
+Link para baixar (mande para os irmãos): <https://github.com/mascarelo/lista-mercado-mascarelo/releases/latest>
+
+### Passo 16: guardar a chave de assinatura no GitHub
+1. No repositório: **Settings → Secrets and variables → Actions → New repository secret**.
+2. **Name:** `CHAVE_ASSINATURA`
+3. **Secret:** abra o arquivo `CHAVE_ASSINATURA-lista-mercado.txt` (enviado separado, fora do zip), copie **tudo** e cole. Clique em **Add secret**.
+4. Guarde esse arquivo num lugar seguro (Google Drive, por exemplo). Se a chave se perder, as próximas versões não vão atualizar por cima e todo mundo terá que desinstalar uma vez.
+
+### Passo 16b: arquivo do Firebase para o app Android (notificações no APK)
+1. Abra <https://console.firebase.google.com/project/lista-mercado-mascarelo/settings/general>.
+2. Em **Seus apps**, clique em **Adicionar app** → ícone do **Android**.
+3. **Nome do pacote do Android:** `com.mascarelo.listamercado` (exatamente assim). Apelido: `Lista Mercado Android`. Clique em **Registrar app**.
+4. Clique em **Baixar google-services.json**. Pule os outros passos da tela (clique em Avançar até **Continuar no console**).
+5. Envie o `google-services.json` para a raiz do repositório (Add file → Upload files). Ele não é senha: pode ficar no repositório.
+
+### Passo 17: subir os arquivos do APK
+1. **Add file → Upload files**: envie `package.json`, `capacitor.config.json`, `index.html`, `app.js`, `styles.css` e a pasta `android-res` (ícone das notificações).
+2. **Add file → Create new file**, nome `.github/workflows/build-apk.yml`, cole o conteúdo do arquivo de mesmo nome do zip e clique em **Commit changes**.
+
+### Passo 18: gerar e instalar
+1. O APK começa a ser gerado sozinho a cada envio de arquivos do app. Para gerar na hora: **Actions → Gerar APK → Run workflow**. Leva uns 5 a 8 minutos.
+2. Quando terminar (bolinha verde), abra a aba **Releases** (ou o link acima) e baixe `lista-de-mercado-by-mascarelo.apk` pelo celular.
+3. Abra o arquivo e toque em **Instalar**. Na primeira vez o Android pede para permitir instalar apps de fontes desconhecidas pelo navegador: permita.
+4. Nas próximas versões, é só baixar o novo APK e tocar em **Atualizar**. Não precisa desinstalar.
+
+---
+
 ## Gerenciar usuários (só o administrador)
 
 - **Editar:** muda o nome que aparece nos itens ou o nome de usuário.
@@ -142,3 +177,7 @@ Edite ou envie os arquivos novos pelo GitHub (**Add file → Upload files**). O 
 | `avisos/vigia.js` | Vigia que observa o banco e avisa em ~1 minuto |
 | `.github/workflows/avisos.yml` | Agenda do robô (a cada 10 min) e botão de teste |
 | `.github/workflows/vigia.yml` | Agenda do vigia (7h às 23h) |
+| `.github/workflows/build-apk.yml` | Gera o APK e publica na aba Releases |
+| `package.json`, `capacitor.config.json` | Configuração do app Android (APK) |
+| `android-res/` | Ícone branco e cor das notificações do APK |
+| `google-services.json` | Configuração do Firebase para o APK (você baixa no passo 16b) |
