@@ -1,7 +1,7 @@
 // Envia as notificações da Lista de Mercado by Mascarelo (Firebase Cloud Messaging).
 // Mesmo esquema do Bolão F1: roda no GitHub Actions com a conta de serviço do Firebase.
 //
-// Uso: node avisos/enviar.js                      -> rotina normal (procura listas recém-concluídas e avisa)
+// Uso: node avisos/enviar.js                      -> rotina normal (avisa listas recém-criadas e recém-concluídas)
 //      node avisos/enviar.js teste todos          -> notificação de teste para todos os aparelhos ativados
 //      node avisos/enviar.js teste thiago,rafael  -> teste só para os aparelhos desses usuários
 //      MENSAGEM="texto" node avisos/enviar.js teste todos   -> teste com texto próprio
@@ -10,8 +10,10 @@ const fs = require('fs');
 
 const SITE = 'https://mascarelo.github.io/lista-mercado-mascarelo/';
 const ICONE = SITE + 'icons/mercado-192.png';
-// Lista concluída há mais tempo que isso e ainda sem aviso (ex.: primeira vez que o robô roda) é só marcada, sem notificar.
+// Lista criada/concluída há mais tempo que isso e ainda sem aviso (ex.: robô parado) é só marcada, sem notificar.
 const MAX_ATRASO = 6 * 36e5;
+// Listas criadas antes do aviso de "nova lista" existir não disparam esse aviso (27/10/2026, 05:30 em Brasília).
+const CRIADA_DESDE = Date.parse('2026-10-27T08:30:00Z');
 
 const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
 const ms = (t) => { const v = t && typeof t.toMillis === 'function' ? t.toMillis() : t ? +new Date(t) : 0; return Number.isFinite(v) ? v : 0; };
@@ -28,12 +30,20 @@ function textoConcluida(l) {
   };
 }
 
-// Aparelhos que ativaram o aviso e cujo dono ainda tem acesso ao app
-async function aparelhosAtivos(db) {
+function textoCriada(l) {
+  return {
+    title: '📝 Nova lista: ' + (l.name || 'sem nome'),
+    body: (l.createdBy || 'Alguém') + ' criou uma lista. Entre e inclua os itens que você precisa.'
+  };
+}
+
+// Aparelhos com notificação ligada para esse tipo de aviso ("concluida" ou "nova"), cujo dono ainda tem acesso ao app.
+// Aparelho sem a preferência gravada recebe (ex.: quem ativou antes do aviso de nova lista existir).
+async function aparelhosAtivos(db, tipo) {
   const [devs, users] = await Promise.all([db.collection('dispositivos').get(), db.collection('users').get()]);
   const ativos = new Map(users.docs.map((u) => [u.id, u.data()]));
   return devs.docs.map((d) => d.data())
-    .filter((d) => d.token && d.prefs && d.prefs.concluida === true && ativos.has(d.uid))
+    .filter((d) => d.token && ativos.has(d.uid) && (!tipo || !d.prefs || d.prefs[tipo] !== false))
     .map((d) => ({ ...d, username: (ativos.get(d.uid) || {}).username }));
 }
 
@@ -86,16 +96,25 @@ function criarEnviar({ db, messaging, simular, log, saida }) {
   };
 }
 
-// Marca a lista como avisada de forma atômica (o vigia e o robô de 10 min nunca avisam a mesma lista duas vezes).
-// Devolve 'enviar', 'antiga' (só marcou) ou null (já tinha sido avisada).
-async function reservar(db, ref, agora) {
+// Marca a lista como avisada de forma atômica (o vigia e o robô de 10 min nunca mandam o mesmo aviso duas vezes).
+// tipo: "criada" ou "concluida". Devolve 'enviar', 'antiga' (só marcou, sem aviso) ou null (já tinha sido tratada).
+async function reservar(db, ref, agora, tipo = 'concluida') {
+  const campo = tipo === 'criada' ? 'avisoCriadaEm' : 'avisoConcluidaEm';
   return db.runTransaction(async (tx) => {
     const d = await tx.get(ref);
     if (!d.exists) return null;
     const l = d.data();
-    if (l.status !== 'closed' || l.avisoConcluidaEm) return null;
-    const antiga = agora - ms(l.closedAt) > MAX_ATRASO;
-    tx.update(ref, { avisoConcluidaEm: new Date(agora).toISOString(), avisoConcluidaStatus: antiga ? 'antiga, sem aviso' : 'enviado' });
+    if (l[campo]) return null;
+    let antiga;
+    if (tipo === 'criada') {
+      const t = ms(l.createdAt);
+      // lista antiga, de antes deste aviso existir, ou que já foi concluída: só marca
+      antiga = t < CRIADA_DESDE || agora - t > MAX_ATRASO || l.status === 'closed';
+    } else {
+      if (l.status !== 'closed') return null;
+      antiga = agora - ms(l.closedAt) > MAX_ATRASO;
+    }
+    tx.update(ref, { [campo]: new Date(agora).toISOString(), [campo.replace('Em', 'Status')]: antiga ? 'antiga, sem aviso' : 'enviado' });
     return antiga ? 'antiga' : 'enviar';
   });
 }
@@ -103,17 +122,26 @@ async function reservar(db, ref, agora) {
 async function rodar({ db, messaging, agora = Date.now(), simular = false, log = console.log }) {
   const saida = [];
   const enviar = criarEnviar({ db, messaging, simular, log, saida });
-  const fechadas = (await db.collection('lists').where('status', '==', 'closed').get()).docs
-    .filter((d) => !d.data().avisoConcluidaEm);
-  if (!fechadas.length) { log('Nenhuma lista nova concluída.'); return saida; }
-  let devs = null;
-  for (const d of fechadas) {
-    const r = await reservar(db, d.ref, agora);
+  const listas = (await db.collection('lists').get()).docs;
+  const pendCriada = listas.filter((d) => !d.data().avisoCriadaEm);
+  const pendConcluida = listas.filter((d) => d.data().status === 'closed' && !d.data().avisoConcluidaEm);
+  if (!pendCriada.length && !pendConcluida.length) { log('Nenhuma lista nova criada ou concluída.'); return saida; }
+  const devs = {};
+  const tokens = async (tipo) => (devs[tipo] = devs[tipo] || (await aparelhosAtivos(db, tipo))).map((x) => x.token);
+  // primeiro os avisos de lista criada, depois os de concluída (se as duas coisas aconteceram, chegam nessa ordem)
+  for (const d of pendCriada) {
+    const r = await reservar(db, d.ref, agora, 'criada');
+    if (!r) continue;
+    const l = d.data();
+    if (r === 'antiga') { log('Lista sem aviso de criação (antiga ou já concluída): ' + l.name); continue; }
+    await enviar(await tokens('nova'), textoCriada(l), SITE + '#/lista/' + d.id, 'criada_' + d.id);
+  }
+  for (const d of pendConcluida) {
+    const r = await reservar(db, d.ref, agora, 'concluida');
     if (!r) continue;
     const l = d.data();
     if (r === 'antiga') { log('Lista antiga, só marcada (sem aviso): ' + l.name); continue; }
-    if (!devs) devs = await aparelhosAtivos(db);
-    await enviar(devs.map((x) => x.token), textoConcluida(l), SITE + '#/historico/' + d.id, 'concluida_' + d.id);
+    await enviar(await tokens('concluida'), textoConcluida(l), SITE + '#/historico/' + d.id, 'concluida_' + d.id);
   }
   return saida;
 }
@@ -143,5 +171,5 @@ async function main() {
   await rodar({ db, messaging, simular });
 }
 
-module.exports = { rodar, teste, textoConcluida, reservar, aparelhosAtivos, criarEnviar, lerChave };
+module.exports = { rodar, teste, textoConcluida, textoCriada, reservar, aparelhosAtivos, criarEnviar, lerChave };
 if (require.main === module) main().then(() => process.exit(0)).catch((e) => { console.error('ERRO', e.message); process.exit(1); });

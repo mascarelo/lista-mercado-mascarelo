@@ -1,5 +1,5 @@
 // Vigia contínuo dos avisos (mesma ideia do Bolão F1): fica LIGADO observando o banco em tempo real e avisa em ~1 minuto,
-// em vez de esperar o agendador do GitHub (que costuma atrasar de 25 a 45 min). Usa a mesma rotina de avisos/enviar.js,
+// em vez de esperar o agendador do GitHub (que costuma atrasar de 25 a 45 min). Vale para lista criada e lista concluída. Usa a mesma rotina de avisos/enviar.js,
 // então mensagens e a trava contra aviso repetido são as mesmas. O robô de 10 em 10 minutos (avisos.yml) continua como reserva.
 //
 // Quando fica ligado: todos os dias, das 7h às 23h (horário de Brasília). Fora disso encerra na hora.
@@ -42,7 +42,7 @@ async function vigiar({ db, messaging, simular, log = console.log, agora = () =>
   const agendar = () => { clearTimeout(timer); timer = setTimeout(conferir, debounce); };
 
   let primeiro = true;
-  const parar = db.collection('lists').where('status', '==', 'closed').onSnapshot(
+  const parar = db.collection('lists').onSnapshot( // qualquer lista criada ou concluída
     () => { if (primeiro) { primeiro = false; return; } agendar(); },
     (e) => log('Erro no observador: ' + e.message)
   );
