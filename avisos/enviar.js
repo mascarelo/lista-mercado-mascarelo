@@ -8,7 +8,7 @@
 // Variáveis: GOOGLE_APPLICATION_CREDENTIALS (chave) | SIMULAR=1 (não envia, só mostra)
 const fs = require('fs');
 
-const SITE = 'https://mascarelo.github.io/lista-mercado-mascarelo/';
+const SITE = 'https://lista-mercado-mascarelo.pages.dev/'; // endereço do site (Cloudflare Pages)
 const ICONE = SITE + 'icons/mercado-192.png';
 // Lista criada/concluída há mais tempo que isso e ainda sem aviso (ex.: robô parado) é só marcada, sem notificar.
 const MAX_ATRASO = 6 * 36e5;
@@ -125,6 +125,15 @@ async function reservar(db, ref, agora, tipo = 'concluida') {
 async function rodar({ db, messaging, agora = Date.now(), simular = false, log = console.log }) {
   const saida = [];
   const enviar = criarEnviar({ db, messaging, simular, log, saida });
+  // Registros de notificação do site ANTIGO (mascarelo.github.io), de antes da migração: não têm "origem".
+  // Apaga para não chegar aviso duplicado; quem usava o site ativa de novo no endereço novo. Os do APK ficam.
+  for (const d of (await db.collection('dispositivos').get()).docs) {
+    const x = d.data();
+    if (!x.origem && x.aparelho && x.aparelho !== 'App Android') {
+      if (!simular) await d.ref.delete();
+      log('Registro de notificação do site antigo removido (' + (x.nome || '?') + ')');
+    }
+  }
   const listas = (await db.collection('lists').get()).docs;
   // Listas de antes da opção "quem pode ver" passam a valer para todos (feito uma vez só, pelo robô)
   for (const d of listas) {
