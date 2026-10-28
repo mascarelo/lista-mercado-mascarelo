@@ -52,6 +52,7 @@ function proximaData(baseMs, dias) {
   const b = new Date(baseMs + BRT);
   return new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate() + dias, 10, 0, 0));
 }
+const SECOES_OK = ['horti', 'carnes', 'frios', 'padaria', 'mercearia', 'bebidas', 'congelados', 'higiene', 'limpeza', 'pet', 'outros'];
 // Lista recorrente concluída antes do dia, esperando a próxima abrir
 const esperandoProxima = (l) => l.status === 'closed' && l.recPendente === true && !l.recProxId && l.rec && l.rec.dias >= 1;
 
@@ -73,7 +74,7 @@ async function abrirProxima(db, ref, agora) {
     });
     itens.forEach((it, i) => tx.set(novo.collection('items').doc(), {
       name: it.name || '', qty: it.qty || '', addedBy: it.addedBy || null, addedByUid: it.addedByUid || null,
-      status: 'pending', createdAt: new Date(agora + i)
+      status: 'pending', createdAt: new Date(agora + i), ...(SECOES_OK.includes(it.secao) ? { secao: it.secao } : {})
     }));
     tx.update(ref, { recProxId: novo.id, recPendente: false });
     return novo.id;
