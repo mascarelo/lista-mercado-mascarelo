@@ -46,10 +46,15 @@ async function vigiar({ db, messaging, simular, log = console.log, agora = () =>
     () => { if (primeiro) { primeiro = false; return; } agendar(); },
     (e) => log('Erro no observador: ' + e.message)
   );
+  let primeiroP = true;
+  const pararP = db.collection('pedidosSenha').onSnapshot( // "Esqueci minha senha": avisa o administrador logo
+    () => { if (primeiroP) { primeiroP = false; return; } agendar(); },
+    (e) => log('Erro no observador de pedidos: ' + e.message)
+  );
   await conferir();
   const iv = setInterval(conferir, tick);
   await new Promise((ok) => { const t = setInterval(() => { if (Date.now() >= fim) { clearInterval(t); ok(); } }, 1000); });
-  clearInterval(iv); clearTimeout(timer); parar();
+  clearInterval(iv); clearTimeout(timer); parar(); pararP();
   while (rodando) await new Promise((r) => setTimeout(r, 200));
   log('Vigia encerrado após ' + n + ' conferência(s).');
   return { conferencias: n };

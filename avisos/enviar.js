@@ -163,6 +163,28 @@ async function reservar(db, ref, agora, tipo = 'concluida') {
   });
 }
 
+// "Esqueci minha senha": avisa os aparelhos dos administradores de cada pedido novo (uma vez só, com trava).
+async function avisarPedidosSenha({ db, enviar, agora, log }) {
+  const pend = (await db.collection('pedidosSenha').get()).docs.filter((d) => d.data().status === 'pendente' && !d.data().avisoEm);
+  if (!pend.length) return;
+  const [users, devs] = await Promise.all([db.collection('users').get(), aparelhosAtivos(db)]);
+  const admins = new Set(users.docs.filter((u) => u.data().role === 'admin').map((u) => u.id));
+  const nomes = new Map(users.docs.map((u) => [u.data().username, u.data().name]));
+  const tokens = devs.filter((x) => admins.has(x.uid)).map((x) => x.token);
+  for (const d of pend) {
+    const r = await db.runTransaction(async (tx) => {
+      const x = await tx.get(d.ref);
+      if (!x.exists || x.data().status !== 'pendente' || x.data().avisoEm) return null;
+      const antigo = agora - ms(x.data().criadoEm) > MAX_ATRASO;
+      tx.update(d.ref, { avisoEm: new Date(agora).toISOString() });
+      return antigo ? 'antigo' : 'enviar';
+    });
+    if (r !== 'enviar') { if (r) log('Pedido de senha antigo, só marcado: ' + d.id); continue; }
+    const nome = nomes.get(d.id) || d.id;
+    await enviar(tokens, { title: '🔑 ' + nome + ' esqueceu a senha', body: 'Toque para redefinir e mandar a senha provisória.' }, SITE + '#/pedidos', 'senha_' + d.id);
+  }
+}
+
 async function rodar({ db, messaging, agora = Date.now(), simular = false, log = console.log }) {
   const saida = [];
   const enviar = criarEnviar({ db, messaging, simular, log, saida });
@@ -193,6 +215,8 @@ async function rodar({ db, messaging, agora = Date.now(), simular = false, log =
       log('Lista marcada como visível para todos: ' + d.data().name);
     }
   }
+  if (!simular) await avisarPedidosSenha({ db, enviar, agora, log });
+  else log('(simulação: pedidos de senha não conferidos)');
   const pendCriada = listas.filter((d) => !d.data().avisoCriadaEm);
   const pendConcluida = listas.filter((d) => d.data().status === 'closed' && !d.data().avisoConcluidaEm);
   if (!pendCriada.length && !pendConcluida.length) { log('Nenhuma lista nova criada ou concluída.'); return saida; }
@@ -245,5 +269,5 @@ async function main() {
   await rodar({ db, messaging, simular });
 }
 
-module.exports = { rodar, teste, podeVer, textoConcluida, textoCriada, reservar, aparelhosAtivos, criarEnviar, lerChave, proximaData, abrirProxima };
+module.exports = { avisarPedidosSenha, rodar, teste, podeVer, textoConcluida, textoCriada, reservar, aparelhosAtivos, criarEnviar, lerChave, proximaData, abrirProxima };
 if (require.main === module) main().then(() => process.exit(0)).catch((e) => { console.error('ERRO', e.message); process.exit(1); });
