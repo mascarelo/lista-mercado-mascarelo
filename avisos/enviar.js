@@ -34,10 +34,50 @@ function textoConcluida(l) {
 const podeVer = (l, uid) => l.publica !== false || !!(l.acesso && l.acesso[uid] === true);
 
 function textoCriada(l) {
+  if (l.recDe && l.rec && l.rec.dias >= 1) {
+    return {
+      title: '📝 Nova lista: ' + (l.name || 'sem nome'),
+      body: 'A lista abriu de novo (repete ' + (l.rec.dias === 1 ? 'todo dia' : 'a cada ' + l.rec.dias + ' dias') + '). Entre e inclua os itens que você precisa.'
+    };
+  }
   return {
     title: '📝 Nova lista: ' + (l.name || 'sem nome'),
     body: (l.createdBy || 'Alguém') + ' criou uma lista. Entre e inclua os itens que você precisa.'
   };
+}
+
+// Recorrência: "proxima" = 7h (Brasília) do dia em que a próxima lista deve abrir. Mesma conta do app.
+const BRT = -3 * 36e5;
+function proximaData(baseMs, dias) {
+  const b = new Date(baseMs + BRT);
+  return new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate() + dias, 10, 0, 0));
+}
+// Lista recorrente concluída antes do dia, esperando a próxima abrir
+const esperandoProxima = (l) => l.status === 'closed' && l.recPendente === true && !l.recProxId && l.rec && l.rec.dias >= 1;
+
+// Abre a próxima lista de uma recorrência (mesmo nome, quem criou e quem vê; itens que não são "só desta vez", pendentes).
+// Atômico: se o app (botão "Abrir agora") ou outro robô já abriu, não faz nada. Devolve o id da nova lista ou null.
+async function abrirProxima(db, ref, agora) {
+  const itens = (await ref.collection('items').get()).docs.map((d) => d.data()).filter((it) => !it.once)
+    .sort((a, b) => ms(a.createdAt) - ms(b.createdAt));
+  return db.runTransaction(async (tx) => {
+    const d = await tx.get(ref);
+    if (!d.exists) return null;
+    const l = d.data();
+    if (!esperandoProxima(l)) return null;
+    const novo = db.collection('lists').doc();
+    tx.set(novo, {
+      name: l.name, status: 'open', createdBy: l.createdBy || null, createdByUid: l.createdByUid || null, createdAt: new Date(agora),
+      publica: l.publica !== false, acesso: l.acesso || {}, visibilidade: l.visibilidade || 'todos',
+      rec: { dias: l.rec.dias, proxima: proximaData(agora, l.rec.dias) }, recDe: ref.id
+    });
+    itens.forEach((it, i) => tx.set(novo.collection('items').doc(), {
+      name: it.name || '', qty: it.qty || '', addedBy: it.addedBy || null, addedByUid: it.addedByUid || null,
+      status: 'pending', createdAt: new Date(agora + i)
+    }));
+    tx.update(ref, { recProxId: novo.id, recPendente: false });
+    return novo.id;
+  });
 }
 
 // Aparelhos com notificação ligada para esse tipo de aviso ("concluida" ou "nova"), cujo dono ainda tem acesso ao app.
@@ -134,7 +174,17 @@ async function rodar({ db, messaging, agora = Date.now(), simular = false, log =
       log('Registro de notificação do site antigo removido (' + (x.nome || '?') + ')');
     }
   }
-  const listas = (await db.collection('lists').get()).docs;
+  let listas = (await db.collection('lists').get()).docs;
+  // Recorrência: chegou o dia (7h de Brasília) de uma lista concluída antes -> abre a próxima
+  let abriu = 0;
+  for (const d of listas) {
+    const l = d.data();
+    if (!esperandoProxima(l) || ms(l.rec.proxima) > agora) continue;
+    if (simular) { log('Abriria a próxima da recorrência: ' + l.name); continue; }
+    const id = await abrirProxima(db, d.ref, agora);
+    if (id) { abriu++; log('Recorrência: abriu a próxima "' + l.name + '" (' + id + ')'); }
+  }
+  if (abriu) listas = (await db.collection('lists').get()).docs;
   // Listas de antes da opção "quem pode ver" passam a valer para todos (feito uma vez só, pelo robô)
   for (const d of listas) {
     if (d.data().publica === undefined) {
@@ -194,5 +244,5 @@ async function main() {
   await rodar({ db, messaging, simular });
 }
 
-module.exports = { rodar, teste, podeVer, textoConcluida, textoCriada, reservar, aparelhosAtivos, criarEnviar, lerChave };
+module.exports = { rodar, teste, podeVer, textoConcluida, textoCriada, reservar, aparelhosAtivos, criarEnviar, lerChave, proximaData, abrirProxima };
 if (require.main === module) main().then(() => process.exit(0)).catch((e) => { console.error('ERRO', e.message); process.exit(1); });
