@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lista de Mercado mudou de endereço</title>
+<meta http-equiv="refresh" content="4;url=https://lista-mercado-mascarelo.pages.dev/">
+<style>body{font-family:system-ui,sans-serif;background:#06305A;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;text-align:center;padding:24px;box-sizing:border-box}a{color:#fff;font-weight:700}h1{font-size:26px}p{line-height:1.5}</style>
+</head>
+<body>
+<div>
+<h1>🛒 Lista de Mercado by Mascarelo</h1>
+<p>O app mudou de endereço.<br>Levando você para o novo site…</p>
+<p><a id="novo" href="https://lista-mercado-mascarelo.pages.dev/">lista-mercado-mascarelo.pages.dev</a></p>
+<p style="opacity:.85;font-size:14px">Se você usava as notificações aqui, entre no novo site e ative de novo em Configurações.</p>
+</div>
+<script>
+/* Limpa o que a LISTA deixou registrado neste endereço antigo (service worker e inscrição de notificações) e segue para o novo.
+   Este endereço (mascarelo.github.io) também foi usado pelo Bolão F1: por isso só mexe no que é da pasta da lista. */
+(async () => {
+  const NOVO = "https://lista-mercado-mascarelo.pages.dev/" + (location.hash || "");
+  document.getElementById("novo").href = NOVO;
+  try {
+    const minha = location.origin + "/lista-mercado-mascarelo/";
+    if ("serviceWorker" in navigator) {
+      const rs = await navigator.serviceWorker.getRegistrations();
+      for (const r of rs) {
+        if (!r.scope.startsWith(minha)) continue;
+        try { const s = await r.pushManager.getSubscription(); if (s) await s.unsubscribe(); } catch (_) {}
+        try { await r.unregister(); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  setTimeout(() => location.replace(NOVO), 1200);
+})();
+</script>
+</body>
+</html>
