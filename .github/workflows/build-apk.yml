@@ -1,24 +1,18 @@
 name: Gerar APK
 
 # Gera o app Android (APK) e publica na aba Releases. Mesmo esquema do Bolão F1:
+# - o CÓDIGO do app fica no repositório PRIVADO mascarelo/lista-mercado-codigo; este workflow busca de lá (token PAT_CODIGO);
+# - a compilação fica AQUI (público): minutos ilimitados, mesma chave de assinatura e a numeração continua;
 # - cada APK tem número de versão maior que o anterior (versionCode = número da execução);
 # - todos são assinados com a MESMA chave (segredo CHAVE_ASSINATURA).
 # Com isso o Android instala a versão nova POR CIMA da antiga, sem desinstalar.
+# Dispara sozinho quando o privado recebe código novo (workflow "Avisar o Gerar APK" de lá -> repository_dispatch).
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [novo-codigo]
   push:
-    branches: [main]
     paths:
-      - 'index.html'
-      - 'app.js'
-      - 'styles.css'
-      - 'firebase-config.js'
-      - 'manifest.json'
-      - 'icons/**'
-      - 'package.json'
-      - 'capacitor.config.json'
-      - 'google-services.json'
-      - 'android-res/**'
       - '.github/workflows/build-apk.yml'
 
 permissions:
@@ -34,6 +28,25 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Buscar o código do app no repositório privado
+        uses: actions/checkout@v4
+        with:
+          repository: mascarelo/lista-mercado-codigo
+          token: ${{ secrets.PAT_CODIGO }}
+          path: fonte
+      - name: Copiar o código para a pasta de trabalho
+        run: |
+          for f in index.html app.js styles.css firebase-config.js manifest.json firebase-messaging-sw.js package.json capacitor.config.json google-services.json; do
+            test -f "fonte/$f" || { echo "ERRO: faltou $f no repositório privado"; exit 1; }
+            cp "fonte/$f" .
+          done
+          for d in icons android-res; do
+            test -d "fonte/$d" || { echo "ERRO: faltou a pasta $d no repositório privado"; exit 1; }
+            rm -rf "$d"
+            cp -r "fonte/$d" .
+          done
+          echo "Código do privado: $(git -C fonte rev-parse --short HEAD)"
+          rm -rf fonte
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -53,6 +66,8 @@ jobs:
           npm install
           npx cap add android
           npx cap sync android
+          # o botão voltar do aparelho depende do plugin oficial @capacitor/app
+          grep -q '@capacitor/app' android/app/src/main/assets/capacitor.plugins.json || { echo "ERRO: o plugin @capacitor/app (botão voltar) não entrou no APK"; exit 1; }
       - name: Notificações no app (Firebase Cloud Messaging)
         run: |
           if [ ! -s google-services.json ]; then
