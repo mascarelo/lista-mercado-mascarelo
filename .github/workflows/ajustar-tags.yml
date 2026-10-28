@@ -1,0 +1,37 @@
+name: Ajustar versoes (uso unico - apagar depois)
+# Faz as marcas apk-1..apk-8 apontarem para o historico novo (sem o codigo do app).
+# So roda se o main ainda for o historico novo esperado. Nao mexe nas Releases nem nos APKs.
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  ajustar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ajustar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+        run: |
+          set -e
+          ESPERADO=7247245baf859d7e94b63ea5e73cd1d78f9507ae
+          ATUAL=$(gh api repos/$R/commits/main --jq .sha)
+          echo "main atual: $ATUAL"
+          if [ "$ATUAL" != "$ESPERADO" ]; then
+            # aceita commits novos por cima (ex.: este arquivo), desde que o esperado esteja no historico
+            gh api repos/$R/compare/$ESPERADO...$ATUAL --jq .status | grep -qE '^(ahead|identical)$' || { echo "main nao e o historico novo. Parei sem mexer em nada."; exit 1; }
+          fi
+          while read t c; do
+            echo "apk-$t -> $c"
+            gh api -X PATCH repos/$R/git/refs/tags/apk-$t -f sha=$c -F force=true --jq .object.sha
+          done <<'LISTA'
+          1 3c5128a5cb5fea6dd392b025dfb5605991d22809
+          2 0fa1c3d51c0b487bae8b98cbd5517945fb01052e
+          3 99a036b5b80ac2ea444c3e82cb746f2f84cebebb
+          4 32a272fad4fa8ce233f7f782b053524ab519b5d6
+          5 32a272fad4fa8ce233f7f782b053524ab519b5d6
+          6 31704aa7a9feb4e234108f64490d95831183b70c
+          7 885010f9d5274076fc51723470471aa32098b48d
+          8 885010f9d5274076fc51723470471aa32098b48d
+          LISTA
