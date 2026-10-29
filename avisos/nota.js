@@ -121,17 +121,31 @@ function calcularPrecos(listas) {
   return Object.fromEntries(Object.entries(acc).map(([k, v]) => [k, { m: Math.round((v.s / v.n) * 100) / 100, n: v.n }]));
 }
 
-async function buscar(url, fetchFn) {
-  const r = await fetchFn(url.replace(/\|/g, '%7C'), {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36', 'Accept-Language': 'pt-BR,pt;q=0.9' },
-    signal: AbortSignal.timeout(40000)
+// A Fazenda de SP recusa o fetch() do Node ("Request Rejected" do firewall deles), mas aceita o https comum
+// (testado no GitHub em 28/10/2026). Por isso a busca usa node:https, seguindo redirecionamentos.
+const https = require('https');
+function baixar(url, n = 0) {
+  return new Promise((ok, no) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36', 'Accept': 'text/html,*/*', 'Accept-Language': 'pt-BR,pt;q=0.9' }, timeout: 40000 }, (r) => {
+      if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && n < 5) { r.resume(); return ok(baixar(new URL(r.headers.location, url).href, n + 1)); }
+      let b = ''; r.setEncoding('utf8'); r.on('data', (d) => (b += d));
+      r.on('end', () => ok({ ok: r.statusCode >= 200 && r.statusCode < 300, status: r.statusCode, text: async () => b }));
+    });
+    req.on('timeout', () => req.destroy(new Error('tempo esgotado')));
+    req.on('error', no);
   });
+}
+
+async function buscar(url, fetchFn = baixar) {
+  const r = await fetchFn(url.replace(/\|/g, '%7C'));
   if (!r.ok) throw new Error('HTTP ' + r.status);
-  return r.text();
+  const t = await r.text();
+  if (/Request Rejected/i.test(t)) throw new Error('a Fazenda recusou a consulta (bloqueio temporário)');
+  return t;
 }
 
 /** Rotina: lê as notas pedidas e atualiza os preços médios. */
-async function lerNotas({ db, agora = Date.now(), log = console.log, fetchFn = fetch, simular = false }) {
+async function lerNotas({ db, agora = Date.now(), log = console.log, fetchFn = baixar, simular = false }) {
   const listas = (await db.collection('lists').get()).docs;
   const pedidas = listas.filter((d) => { const n = d.data().nota; return n && n.status === 'buscando' && (!n.proximaEm || ms(n.proximaEm) <= agora); });
   let mudou = false;
