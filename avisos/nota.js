@@ -12,6 +12,19 @@ const semAcento = (t) => String(t || '').toLowerCase().normalize('NFD').replace(
 // mesma chave do app (chaveItem): nome sem acento, minúsculo, só letras/números/espaço
 const chave = (nome) => semAcento(nome).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || '-';
 
+/** Aceita o link do QR code em qualquer formato da Fazenda de SP (.../qrcode?p=..., http, "|" codificado) e devolve o
+ *  link da consulta pública; null se não for nota de SP. */
+function linkNotaSP(texto) {
+  try {
+    const u = new URL(String(texto || '').trim());
+    if (!/^https?:$/.test(u.protocol) || !/(^|\.)nfce\.fazenda\.sp\.gov\.br$/i.test(u.hostname)) return null;
+    const pm = [...u.searchParams.entries()].find(([k]) => k.toLowerCase() === 'p');
+    const val = pm ? pm[1].replace(/%7C/gi, '|').trim() : '';
+    if (!/^\d{44}\|[0-9A-Za-z|]+$/.test(val)) return null;
+    return 'https://www.nfce.fazenda.sp.gov.br/NFCeConsultaPublica/Paginas/ConsultaQRCode.aspx?p=' + val;
+  } catch (_) { return null; }
+}
+
 /** Lê a página da Fazenda de SP. Devolve { loja, cnpj, emissao, total, desconto, itens: [{ d, q, un, vu, vt }] } ou null. */
 function lerPagina(html) {
   const s = String(html || '');
@@ -128,12 +141,13 @@ async function lerNotas({ db, agora = Date.now(), log = console.log, fetchFn = f
     for (const d of pedidas) {
       const l = d.data(), n = l.nota;
       if (simular) { log('Leria a nota de: ' + l.name); continue; }
-      if (!SP.test(String(n.url || ''))) {
+      const link = linkNotaSP(n.url);
+      if (!link || !SP.test(link)) {
         await d.ref.update({ 'nota.status': 'erro', 'nota.erro': 'Este QR code não é de uma nota fiscal de SP (NFC-e).' });
         log('Nota com link inválido: ' + l.name); mudou = true; continue;
       }
       let dados = null, motivo = '';
-      try { dados = lerPagina(await buscar(n.url, fetchFn)); if (!dados) motivo = 'a página veio sem itens (a nota pode levar até 30 minutos para aparecer)'; }
+      try { dados = lerPagina(await buscar(link, fetchFn)); if (!dados) motivo = 'a página veio sem itens (a nota pode levar até 30 minutos para aparecer)'; }
       catch (e) { motivo = e.message; }
       if (!dados) {
         const t = (n.tentativas || 0) + 1;
@@ -169,4 +183,4 @@ async function lerNotas({ db, agora = Date.now(), log = console.log, fetchFn = f
   }
 }
 
-module.exports = { lerNotas, lerPagina, parear, parecido, calcularPrecos, chave, SP };
+module.exports = { linkNotaSP, lerNotas, lerPagina, parear, parecido, calcularPrecos, chave, SP };
