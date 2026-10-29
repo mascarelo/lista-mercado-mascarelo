@@ -288,9 +288,14 @@ jobs:
           perm = '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />'
           if 'REQUEST_INSTALL_PACKAGES' not in s:
               s = s.replace('<application', perm + '\n    <application', 1)
+          # câmera: para ler o QR code da nota fiscal (o app pede a permissão na primeira vez)
+          cam = '<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />'
+          if 'android.permission.CAMERA' not in s:
+              s = s.replace('<application', cam + '\n    <application', 1)
           open(p, 'w', encoding='utf-8').write(s)
           PY
           grep -q REQUEST_INSTALL_PACKAGES android/app/src/main/AndroidManifest.xml
+          grep -q android.permission.CAMERA android/app/src/main/AndroidManifest.xml
           grep -q 'androidx.core.content.FileProvider' android/app/src/main/AndroidManifest.xml || { echo "ERRO: o projeto Android não tem o FileProvider esperado"; exit 1; }
       - name: Ajustar bordas da tela (barras do Android em azul escuro)
         run: |

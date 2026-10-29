@@ -7,6 +7,7 @@
 //      MENSAGEM="texto" node avisos/enviar.js teste todos   -> teste com texto próprio
 // Variáveis: GOOGLE_APPLICATION_CREDENTIALS (chave) | SIMULAR=1 (não envia, só mostra)
 const fs = require('fs');
+const { lerNotas } = require('./nota.js');
 
 const SITE = 'https://lista-mercado-mascarelo.pages.dev/'; // endereço do site (Cloudflare Pages)
 const ICONE = SITE + 'icons/mercado-192.png';
@@ -197,6 +198,8 @@ async function rodar({ db, messaging, agora = Date.now(), simular = false, log =
       log('Registro de notificação do site antigo removido (' + (x.nome || '?') + ')');
     }
   }
+  // Notas fiscais pedidas no app (QR code): lê na Fazenda de SP e põe os preços (avisos/nota.js)
+  try { await lerNotas({ db, agora, log, simular }); } catch (e) { log('Erro ao ler notas (segue): ' + e.message); }
   let listas = (await db.collection('lists').get()).docs;
   // Recorrência: chegou o dia (7h de Brasília) de uma lista concluída antes -> abre a próxima
   let abriu = 0;
